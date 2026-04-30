@@ -1,0 +1,10 @@
+先开后端：
+cd "C:\Users\Lenovo\Desktop\Cross-modal retrieval system\backend"
+conda activate pt_env
+python api_server.py
+
+再开前端
+cd "C:\Users\Lenovo\Desktop\Cross-modal retrieval system\frontend"
+npm run dev
+
+点击前端内网进入system

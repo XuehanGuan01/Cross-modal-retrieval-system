@@ -1,0 +1,78 @@
+﻿# 图片文件夹（你的gallery目录）
+backend/gallery/
+backend/gallery/*
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tiff
+*.webp
+*.JPG
+*.PNG
+
+# 其他可能的图片目录
+*/gallery/
+*/images/
+*/datasets/
+*/data/
+
+# 模型文件
+*.pth
+*.pt
+*.ckpt
+*.bin
+*.h5
+*.onnx
+*.pkl
+
+# 特征和缓存
+*.npy
+*.npz
+*.hdf5
+*.feather
+cache/
+__pycache__/
+*.pyc
+
+# 向量数据库
+*.faiss
+*.ann
+*.index
+
+# 后端环境
+backend/venv/
+backend/env/
+backend/__pycache__/
+backend/*.log
+
+# 前端依赖
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/build/
+
+# 环境配置
+.env
+.env.local
+config.local.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 日志
+logs/
+*.log
+backend/logs/
+
+# 系统文件
+Thumbs.db
+desktop.ini
+
+# 压缩包
+*.zip
+*.tar
+*.gz
+*.rar
