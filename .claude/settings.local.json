@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import json; data=json.load\\(open\\('C:/Users/Lenovo/Desktop/Cross-modal retrieval system/backend/data/metadata.json','r',encoding='utf-8'\\)\\); print\\(json.dumps\\(data[0], ensure_ascii=False, indent=2\\)\\); print\\(f'... total {len\\(data\\)} records'\\)\")",
+      "Bash(python -c \"import json; data=json.load\\(open\\('C:/Users/Lenovo/Desktop/Cross-modal retrieval system/backend/data/metadata.json','r',encoding='utf-8'\\)\\); print\\(json.dumps\\(data[0], ensure_ascii=False, indent=2\\)\\); print\\(f'... total {len\\(data\\)} records'\\)\")",
+      "Bash(git -C \"C:/Users/Lenovo/Desktop/PlantNet-300K-main\" log --oneline -5)",
+      "Bash(git -C \"C:/Users/Lenovo/Desktop/PlantNet-300K-main\" remote -v)",
+      "WebFetch(domain:zenodo.org)",
+      "Bash(curl -L -o \"C:/Users/Lenovo/Desktop/Cross-modal retrieval system/data/plantnet300K_species_id_2_name.json\" \"https://lab.plantnet.org/seafile/d/bed81bc15e8944969cf6/files/?p=%2Fplantnet300K_species_id_2_name.json&dl=1\")",
+      "Bash(curl -L -o \"C:/Users/Lenovo/Desktop/Cross-modal retrieval system/data/class_idx_to_species_id.json\" \"https://lab.plantnet.org/seafile/d/bed81bc15e8944969cf6/files/?p=%2Fclass_idx_to_species_id.json&dl=1\")",
+      "Bash(curl -L -o \"C:/Users/Lenovo/Desktop/Cross-modal retrieval system/data/plantnet300K_metadata.json\" \"https://lab.plantnet.org/seafile/d/bed81bc15e8944969cf6/files/?p=%2Fplantnet300K_metadata.json&dl=1\")",
+      "Bash(python -c ' *)",
+      "WebSearch",
+      "Bash(python *)",
+      "Bash(pip install *)",
+      "Bash(robocopy \"E:\\\\Animals_with_Attributes2\\\\JPEGImages\" \"C:\\\\Users\\\\Lenovo\\\\Desktop\\\\Cross-modal retrieval system\\\\backend\\\\gallery\\\\animal\" /E /NFL /NDL /NJH /NJS)",
+      "Bash(conda env *)",
+      "Bash(conda run *)",
+      "Bash(wsl ps *)",
+      "Bash(tasklist)",
+      "Read(//e/Chinese-Clip-datasets/**)",
+      "Bash(python3 -c \"import json; data=json.load\\(open\\('C:/Users/Lenovo/Desktop/Cross-modal retrieval system/backend/data/metadata.json'\\)\\); print\\(f'Records: {len\\(data\\)}'\\)\")",
+      "Bash(xxd -l 256 \"C:\\\\Users\\\\Lenovo\\\\Desktop\\\\Cross-modal retrieval system/backend/data/images.index\")",
+      "Bash(xxd)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)",
+      "Bash(echo \"import sys; sys.path.insert\\(0, '.'\\); from scripts.build_caption_index import extract_image_id, load_caption_map; tests = [\\('COCO_train2014_000000000036.jpg', \\(36, 'COCO-CN'\\)\\), \\('COCO_val2014_000000000042.jpg', \\(42, 'COCO-CN'\\)\\), \\('Flickr30K_985982384.jpg', \\(985982384, 'Flickr30k-CN'\\)\\), \\('MUGE_100.jpg', \\(100, 'MUGE'\\)\\), \\('MUGE_1000002.jpg', \\(1000002, 'MUGE'\\)\\)]; all_pass = all\\(extract_image_id\\(f\\) == e for f, e in tests\\); print\\('ID extraction tests:', 'PASS' if all_pass else 'FAIL'\\); cmap = load_caption_map\\('E:/Chinese-Clip-datasets', ['MUGE']\\); print\\(f'MUGE captions: {len\\(cmap\\):,}'\\); cmap2 = load_caption_map\\('E:/Chinese-Clip-datasets', ['COCO-CN', 'Flickr30k-CN']\\); print\\(f'Auto captions: {len\\(cmap2\\):,}'\\); coco = sum\\(1 for v in cmap2.values\\(\\) if v[1]=='COCO-CN'\\); fk = sum\\(1 for v in cmap2.values\\(\\) if v[1]=='Flickr30k-CN'\\); print\\(f'COCO-CN: {coco:,}, Flickr30k-CN: {fk:,}'\\)\")",
+      "Bash(del test_val.py)",
+      "Bash(D:\\\\miniconda3\\\\envs\\\\pt_env\\\\python.exe -c \"import sys; sys.path.insert\\(0, '.'\\); from scripts.build_caption_index import extract_image_id, load_caption_map; tests = [\\('COCO_train2014_000000000036.jpg', \\(36, 'COCO-CN'\\)\\), \\('Flickr30K_985982384.jpg', \\(985982384, 'Flickr30k-CN'\\)\\), \\('MUGE_100.jpg', \\(100, 'MUGE'\\)\\)]; all_pass = all\\(extract_image_id\\(f\\) == e for f, e in tests\\); print\\('ID extraction:', 'PASS' if all_pass else 'FAIL'\\); cmap = load_caption_map\\('E:/Chinese-Clip-datasets', ['MUGE']\\); print\\(f'MUGE captions: {len\\(cmap\\):,}'\\); cmap2 = load_caption_map\\('E:/Chinese-Clip-datasets', ['COCO-CN', 'Flickr30k-CN']\\); print\\(f'Auto captions: {len\\(cmap2\\):,}'\\); coco = sum\\(1 for v in cmap2.values\\(\\) if v[1]=='COCO-CN'\\); fk = sum\\(1 for v in cmap2.values\\(\\) if v[1]=='Flickr30k-CN'\\); print\\(f'COCO-CN: {coco:,}, Flickr30k-CN: {fk:,}'\\)\")",
+      "Bash(\"D:/miniconda3/envs/pt_env/python.exe\" -c \"import sys; sys.path.insert\\(0, '.'\\); from scripts.build_caption_index import extract_image_id, load_caption_map; tests = [\\('COCO_train2014_000000000036.jpg', \\(36, 'COCO-CN'\\)\\), \\('Flickr30K_985982384.jpg', \\(985982384, 'Flickr30k-CN'\\)\\), \\('MUGE_100.jpg', \\(100, 'MUGE'\\)\\)]; all_pass = all\\(extract_image_id\\(f\\) == e for f, e in tests\\); print\\('ID extraction: ' + \\('PASS' if all_pass else 'FAIL'\\)\\); cmap = load_caption_map\\('E:/Chinese-Clip-datasets', ['MUGE']\\); print\\('MUGE captions: ' + str\\(len\\(cmap\\)\\)\\); cmap2 = load_caption_map\\('E:/Chinese-Clip-datasets', ['COCO-CN', 'Flickr30k-CN']\\); print\\('Auto captions: ' + str\\(len\\(cmap2\\)\\)\\); coco = sum\\(1 for v in cmap2.values\\(\\) if v[1]=='COCO-CN'\\); fk = sum\\(1 for v in cmap2.values\\(\\) if v[1]=='Flickr30k-CN'\\); print\\('COCO-CN: ' + str\\(coco\\) + ', Flickr30k-CN: ' + str\\(fk\\)\\)\")",
+      "Bash(\"D:/miniconda3/envs/pt_env/python.exe\" scripts/build_caption_index.py --domain shop --batch-size 64 --device cuda)",
+      "Bash(\"D:/miniconda3/envs/pt_env/python.exe\" scripts/build_caption_index.py --domain auto --batch-size 64 --device cuda)",
+      "Bash(git config *)",
+      "Bash(git add *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(npx vue-tsc *)"
+    ]
+  }
+}

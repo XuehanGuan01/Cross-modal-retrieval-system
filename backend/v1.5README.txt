@@ -1,0 +1,23 @@
+backend/
+├── api_server.py              # FastAPI: 当前仅加载全局旧索引
+├── core/
+│   ├── model_loader.py        # CNClipModelLoader (ViT-B-16, dim=512)
+│   ├── processor.py           # encode_images / encode_texts
+│   └── search_engine.py       # SearchEngine (FAISS IndexFlatIP)
+├── scripts/
+│   ├── build_index.py         # v1 legacy（无 caption）
+│   ├── build_plantnet300k_index.py
+│   ├── build_awa2_index.py
+│   └── build_caption_index.py # auto/shop 通用
+├── data/
+│   ├── auto/    (images.index + metadata.json)
+│   ├── plant/   (images.index + metadata.json)
+│   ├── animal/  (images.index + metadata.json)
+│   └── shop/    (images.index + metadata.json)
+├── gallery/
+│   ├── auto/    (155,070 张，扁平)
+│   ├── plant/   (306,146 张，扁平)
+│   ├── animal/  (37,322 张，50个子目录)
+│   └── shop/    (159,186 张，扁平)
+└── model/
+    └── epoch_latest.pt

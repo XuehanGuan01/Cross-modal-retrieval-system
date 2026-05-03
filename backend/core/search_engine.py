@@ -19,15 +19,18 @@ class SearchEngine:
         index: faiss.Index,
         metadata: List[Dict[str, Any]],
         image_base_url: str = "/gallery",
+        path_prefix: str = "",
     ) -> None:
         """
             :param index: 已加载的 FAISS 索引对象
             :param metadata: 包含图片路径信息的元数据列表
             :param image_base_url: 前端访问图片的基础路径 (例如：http://localhost:5000/images)
+            :param path_prefix: 领域前缀，用于构造多领域图片URL (如 "auto", "plant", "animal")
         """
         self.index = index
         self.metadata = metadata
         self.image_base_url = image_base_url.rstrip("/")
+        self.path_prefix = path_prefix
 
     @classmethod
     def from_files(
@@ -35,6 +38,7 @@ class SearchEngine:
         index_path: str | Path,
         metadata_path: str | Path,
         image_base_url: str = "/gallery",
+        path_prefix: str = "",
     ) -> "SearchEngine":
 
 # 工厂方法：直接从硬盘文件加载索引和元数据，创建 SearchEngine 实例。
@@ -57,7 +61,7 @@ class SearchEngine:
             metadata = json.load(f)
 
 
-        return cls(index=index, metadata=metadata, image_base_url=image_base_url)
+        return cls(index=index, metadata=metadata, image_base_url=image_base_url, path_prefix=path_prefix)
 
     def search(self, query_vec: np.ndarray, top_k: int = 10) -> List[Dict[str, Any]]:
         """
@@ -94,8 +98,11 @@ class SearchEngine:
             # 将 gallery\cat.jpg 转换为 gallery/cat.jpg，方便 URL 访问
             rel_path = str(meta.get("path", "")).replace("\\", "/").lstrip("/")
 
-            # 构建最终的图片访问 URL
-            image_url = f"{self.image_base_url}/{rel_path}" if rel_path else ""
+            # 构建最终的图片访问 URL（多领域支持：/gallery/{domain}/{path}）
+            if self.path_prefix:
+                image_url = f"{self.image_base_url}/{self.path_prefix}/{rel_path}"
+            else:
+                image_url = f"{self.image_base_url}/{rel_path}" if rel_path else ""
 
             results.append(
                 {
@@ -105,6 +112,59 @@ class SearchEngine:
                     "caption": meta.get("caption"),  # 图片描述
                     "score": float(score),  # 相似度分数 (float32 转 float)
                     "rank": rank,  # 排名顺序
+                }
+            )
+
+        return results
+
+    def search_in_subset(
+        self,
+        query_vec: np.ndarray,
+        candidate_indices: List[int],
+        top_k: int = 10,
+    ) -> List[Dict[str, Any]]:
+        if query_vec.ndim == 1:
+            query_vec = query_vec[None, :]
+        query_vec = query_vec.astype("float32")
+
+        if not candidate_indices:
+            return []
+
+        candidate_indices = [int(i) for i in candidate_indices if 0 <= i < len(self.metadata)]
+        if not candidate_indices:
+            return []
+
+        candidate_vectors = np.array(
+            [self.index.reconstruct(i) for i in candidate_indices],
+            dtype="float32",
+        )
+
+        similarities = np.dot(candidate_vectors, query_vec.T).flatten()
+
+        k = min(top_k, len(candidate_indices))
+        top_local = np.argsort(similarities)[-k:][::-1]
+
+        results: List[Dict[str, Any]] = []
+        for rank, local_idx in enumerate(top_local, start=1):
+            global_idx = candidate_indices[int(local_idx)]
+            score = float(similarities[int(local_idx)])
+            meta = self.metadata[global_idx]
+
+            rel_path = str(meta.get("path", "")).replace("\\", "/").lstrip("/")
+
+            if self.path_prefix:
+                image_url = f"{self.image_base_url}/{self.path_prefix}/{rel_path}"
+            else:
+                image_url = f"{self.image_base_url}/{rel_path}" if rel_path else ""
+
+            results.append(
+                {
+                    "id": int(meta.get("id", global_idx)),
+                    "path": rel_path,
+                    "image_url": image_url,
+                    "caption": meta.get("caption"),
+                    "score": score,
+                    "rank": rank,
                 }
             )
 

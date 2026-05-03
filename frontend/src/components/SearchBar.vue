@@ -1,12 +1,33 @@
 <template>
   <el-card class="search-card" shadow="never">
     <div class="search-header">
-      <el-radio-group v-model="mode" size="small">
-        <el-radio-button label="text-to-image">文本搜图</el-radio-button>
-        <el-radio-button label="image-to-text">图搜文</el-radio-button>
-      </el-radio-group>
-      <div class="history-tip" v-if="history.length">
-        最近搜索：{{ history[0].query }}（{{ history[0].time }}）
+      <div class="header-left">
+        <span class="domain-label">检索领域：</span>
+        <el-select
+          v-model="currentDomain"
+          size="small"
+          style="width: 200px"
+          @change="onDomainChange"
+        >
+          <el-option
+            v-for="d in domains"
+            :key="d.name"
+            :label="`${d.name} — ${d.description}`"
+            :value="d.name"
+          />
+        </el-select>
+        <span class="domain-count" v-if="currentDomainInfo">
+          {{ currentDomainInfo.image_count.toLocaleString() }} 张图片
+        </span>
+      </div>
+      <div class="header-right">
+        <el-radio-group v-model="mode" size="small">
+          <el-radio-button label="text-to-image">文本搜图</el-radio-button>
+          <el-radio-button label="image-to-text">图搜文</el-radio-button>
+        </el-radio-group>
+        <div class="history-tip" v-if="history.length">
+          最近搜索：{{ history[0].query }}（{{ history[0].time }}）
+        </div>
       </div>
     </div>
 
@@ -64,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted } from 'vue';
 import { UploadFilled } from '@element-plus/icons-vue';
 import { useSearchStore } from '@/stores/search';
 
@@ -72,18 +93,28 @@ const store = useSearchStore();
 
 const mode = computed({
   get: () => store.mode,
-  set: (val) => store.setMode(val)
+  set: (val) => store.setMode(val),
 });
 
 const queryText = computed({
   get: () => store.queryText,
-  set: (val) => store.setQueryText(val)
+  set: (val) => store.setQueryText(val),
 });
 
 const loading = computed(() => store.loading);
 const error = computed(() => store.error);
 const history = computed(() => store.history);
 const lastImageFileName = computed(() => store.lastImageFileName);
+const currentDomain = computed({
+  get: () => store.currentDomain,
+  set: (val) => store.setDomain(val),
+});
+const domains = computed(() => store.domains);
+const currentDomainInfo = computed(() => store.currentDomainInfo);
+
+const onDomainChange = (val: string) => {
+  store.setDomain(val);
+};
 
 const handleSearchText = () => {
   store.searchByText();
@@ -94,6 +125,10 @@ const onImageChange = (file: any) => {
     store.searchByImage(file.raw);
   }
 };
+
+onMounted(() => {
+  store.loadDomains();
+});
 </script>
 
 <style scoped lang="scss">
@@ -106,6 +141,32 @@ const onImageChange = (file: any) => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.domain-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.domain-count {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 8px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .history-tip {
@@ -131,4 +192,3 @@ const onImageChange = (file: any) => {
   margin-top: 12px;
 }
 </style>
-
