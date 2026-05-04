@@ -21,14 +21,31 @@
         </div>
       </div>
 
+      <!-- 推理进度条（加载中） -->
+      <div v-if="loading" class="progress-banner">
+        <div class="progress-bar">
+          <el-icon class="is-loading" :size="14"><Loading /></el-icon>
+          <span class="progress-text">{{ progressText }}</span>
+        </div>
+      </div>
+
       <ChatMessage
         v-for="msg in messages"
         :key="msg.id"
         :message="msg"
+        @educate="(idx: number) => $emit('educate', idx)"
       />
 
-      <div v-if="loading" class="typing-indicator">
-        <span></span><span></span><span></span>
+      <!-- 结束后展示推理步骤 -->
+      <div v-if="!loading && progressTrail.length" class="progress-done">
+        <el-collapse>
+          <el-collapse-item title="查看推理过程">
+            <div v-for="(p, i) in progressTrail" :key="i" class="trail-step">
+              <el-icon color="#67c23a"><CircleCheck /></el-icon>
+              <span>{{ p }}</span>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </div>
     </div>
 
@@ -76,29 +93,59 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue';
-import { ChatDotRound, PictureFilled } from '@element-plus/icons-vue';
+import { ChatDotRound, PictureFilled, Loading, CircleCheck } from '@element-plus/icons-vue';
 import ChatMessage from './ChatMessage.vue';
 import type { ChatMessage as ChatMessageType } from '@/stores/agent';
+import { useAgentStore } from '@/stores/agent';
 
 const props = defineProps<{
   messages: ChatMessageType[];
   loading: boolean;
+  progressTrail?: string[];
+  currentProgress?: string;
 }>();
 
 const emit = defineEmits<{
   (e: 'send', text: string, image?: File): void;
   (e: 'quickQuery', q: string): void;
+  (e: 'educate', resultIndex: number): void;
 }>();
 
+const store = useAgentStore();
 const inputText = ref('');
 const pendingImage = ref<File | null>(null);
 const msgContainer = ref<HTMLElement | null>(null);
+
+const progressText = ref('正在思考...');
 
 const exampleQueries = [
   '帮我找一种开黄色小花、叶子心形的植物',
   '找一只黑白条纹的动物',
   '帮我找红色的连衣裙',
 ];
+
+// 模拟进度变化
+watch(() => props.loading, (val) => {
+  if (val) {
+    const phrases = [
+      '正在理解你的需求...',
+      '正在分析特征，提取关键词...',
+      '正在海量图库中搜索匹配...',
+      '正在排序最佳结果...',
+      '马上就好，正在整理回复...',
+    ];
+    let i = 0;
+    progressText.value = phrases[0];
+    const t = setInterval(() => {
+      i = (i + 1) % phrases.length;
+      progressText.value = phrases[i];
+    }, 1200);
+    (props as any)._t = t;
+  } else {
+    const t = (props as any)._t;
+    if (t) clearInterval(t);
+  }
+});
 
 const handleSend = () => {
   const text = inputText.value.trim();
@@ -109,21 +156,16 @@ const handleSend = () => {
 };
 
 const onImageChange = (file: any) => {
-  if (file?.raw) {
-    pendingImage.value = file.raw;
-  }
+  if (file?.raw) pendingImage.value = file.raw;
 };
 
-watch(
-  () => props.messages.length,
-  () => {
-    nextTick(() => {
-      if (msgContainer.value) {
-        msgContainer.value.scrollTop = msgContainer.value.scrollHeight;
-      }
-    });
-  },
-);
+watch(() => props.messages.length, () => {
+  nextTick(() => {
+    if (msgContainer.value) {
+      msgContainer.value.scrollTop = msgContainer.value.scrollHeight;
+    }
+  });
+});
 </script>
 
 <style scoped lang="scss">
@@ -131,102 +173,50 @@ watch(
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 500px;
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px;
+  padding: 12px 16px;
 }
 
 .chat-welcome {
   text-align: center;
-  padding: 60px 20px;
-
-  h3 {
-    margin: 16px 0 8px;
-    font-size: 18px;
-    color: #303133;
-  }
-
-  p {
-    font-size: 13px;
-    color: #909399;
-    margin-bottom: 24px;
-  }
+  padding: 40px 16px;
+  h3 { margin: 12px 0 6px; font-size: 17px; color: #303133; }
+  p { font-size: 13px; color: #909399; margin-bottom: 20px; }
 }
 
 .example-queries {
-  .example-label {
-    font-size: 12px;
-    color: #c0c4cc;
-    margin-bottom: 8px;
-  }
+  .example-label { font-size: 12px; color: #c0c4cc; margin-bottom: 6px; }
+  .example-tag { margin: 3px; cursor: pointer; transition: all 0.2s;
+    &:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.1); } }
+}
 
-  .example-tag {
-    margin: 4px;
-    cursor: pointer;
-    transition: all 0.2s;
+.progress-banner {
+  padding: 8px 12px;
+  margin: 8px 0;
+  background: #ecf5ff;
+  border-radius: 6px;
+  .progress-bar { display: flex; align-items: center; gap: 8px; }
+  .progress-text { font-size: 13px; color: #409eff; }
+}
 
-    &:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-  }
+.progress-done {
+  margin-top: 8px;
+  :deep(.el-collapse-item__header) { font-size: 12px; color: #909399; }
+  .trail-step { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; color: #606266; }
 }
 
 .chat-input-area {
   border-top: 1px solid #ebeef5;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: #fff;
 }
 
-.input-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.upload-btn {
-  flex-shrink: 0;
-}
-
-.text-input {
-  flex: 1;
-}
-
-.pending-image {
-  margin-top: 8px;
-}
-
-.typing-indicator {
-  display: flex;
-  gap: 4px;
-  padding: 12px 0;
-
-  span {
-    width: 8px;
-    height: 8px;
-    background: #c0c4cc;
-    border-radius: 50%;
-    animation: typing 1.4s infinite both;
-
-    &:nth-child(2) {
-      animation-delay: 0.2s;
-    }
-    &:nth-child(3) {
-      animation-delay: 0.4s;
-    }
-  }
-}
-
-@keyframes typing {
-  0%, 60%, 100% {
-    transform: translateY(0);
-  }
-  30% {
-    transform: translateY(-6px);
-  }
-}
+.input-row { display: flex; align-items: center; gap: 8px; }
+.upload-btn { flex-shrink: 0; }
+.text-input { flex: 1; }
+.pending-image { margin-top: 6px; }
 </style>

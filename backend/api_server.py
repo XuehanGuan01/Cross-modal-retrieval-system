@@ -242,10 +242,28 @@ def create_agent_session(domain: str = "auto") -> Dict[str, str]:
     return {"session_id": session.session_id, "domain": session.domain}
 
 
+class EducateRequest(BaseModel):
+    session_id: str = Field(..., description="会话ID")
+    result_index: int = Field(..., ge=0, description="结果索引（0-based）")
+
+
+
 @app.delete("/api/agent/session/{session_id}")
 def delete_agent_session(session_id: str) -> Dict[str, Any]:
     deleted = SESSION_MANAGER.delete(session_id)
     return {"deleted": deleted, "session_id": session_id}
+
+
+@app.post("/api/agent/educate")
+async def agent_educate(req: EducateRequest) -> Dict[str, Any]:
+    session = SESSION_MANAGER.get(req.session_id)
+    if session is None:
+        return {"error": "会话不存在或已过期", "knowledge_text": "", "similar_images": []}
+
+    if PIPELINE is None:
+        return {"error": "Pipeline 未就绪", "knowledge_text": "", "similar_images": []}
+
+    return await PIPELINE.educate(session, req.result_index)
 
 
 if __name__ == "__main__":

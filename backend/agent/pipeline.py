@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from .prompts import DOMAIN_AGENT_CONFIG, build_prompt, CHAT_SYSTEM_PROMPT
+from .prompts import DOMAIN_AGENT_CONFIG, build_prompt, CHAT_SYSTEM_PROMPT, EDUCATE_PROMPT
 from .state_machine import DialogState, DialogStateMachine
 from .session_manager import Session
 from .domain_agent import DomainAgent
@@ -14,10 +14,23 @@ from core.search_engine import SearchEngine
 
 TOP_K = 5
 LOW_CONFIDENCE_THRESHOLD = 0.5
-SUBSET_MIN_CANDIDATES = TOP_K * 2  # 10
+SUBSET_MIN_CANDIDATES = TOP_K * 2
 
+# ---- 推理阶段的工作中短语 ----
 
-# ---- 领域关键词库（用于自动领域检测） ----
+PROGRESS_PHRASES = {
+    "domain_detect":    "正在理解你的需求...",
+    "extracting":       "正在分析图片特征，提取关键信息...",
+    "condensing":       "正在浓缩检索文本，对齐描述格式...",
+    "searching_subset": "正在候选图库中精准搜索...",
+    "searching_full":   "正在数百万张图片中搜索最佳匹配...",
+    "sorting":          "正在整理结果，按相似度排序...",
+    "presenting":       "马上就好，正在准备展示结果...",
+    "done":             "检索完成！",
+    "chatting":         "正在思考如何回复你...",
+}
+
+# ---- 领域关键词库 ----
 
 DOMAIN_KEYWORDS: Dict[str, List[str]] = {
     "plant": [
@@ -45,13 +58,11 @@ DOMAIN_KEYWORDS: Dict[str, List[str]] = {
     ],
 }
 
-# 搜索意图关键词
 SEARCH_INTENT_KEYWORDS = [
     "帮我找", "搜索", "找一", "查找", "检索", "搜一", "帮我搜",
     "我想找", "我要找", "有没有", "看看", "找一张", "搜一下",
 ]
 
-# 视觉描述词（含这些词大概率是搜索意图）
 VISUAL_DESCRIPTORS = [
     "红色", "黄色", "蓝色", "绿色", "白色", "黑色", "紫色", "粉色", "灰色",
     "橙色", "棕色", "金色", "银色", "彩色",
@@ -88,15 +99,12 @@ class AgentPipeline:
     ) -> Dict[str, Any]:
         is_first = (len(session.messages) == 0)
 
-        # ---- 第一条消息：强制检索 ----
         if is_first:
             return await self._do_search(session, user_message, is_first=True)
 
-        # ---- 后续消息：意图分支 ----
         sm = session.state_machine
         intent = sm.user_intent(user_message)
 
-        # 分支1：用户确认 → 结束
         if intent == DialogState.DONE:
             sm.force(DialogState.DONE)
             session.touch()
@@ -107,33 +115,28 @@ class AgentPipeline:
                 suggestions=["开始新的搜索"],
             )
 
-        # 分支2：细化条件 → 以对话方式询问细节，然后检索
         if intent == DialogState.REFINING:
             sm.force(DialogState.REFINING)
             session.touch()
             return await self._handle_refining(session, user_message)
 
-        # 分支3：扩大搜索 → 放宽条件重新检索
         if intent == DialogState.EXPANDING:
             sm.force(DialogState.EXPANDING)
             session.touch()
             return await self._handle_expanding(session, user_message)
 
-        # 分支4：用户上传了图片 → 以图搜图模式
         if user_image is not None:
             return await self._do_search(session, user_message, is_first=False)
 
-        # 分支5：判断是否搜索意图
         if self._is_search_intent(user_message):
             return await self._do_search(session, user_message, is_first=False)
 
-        # 分支6：不确定 → 聊天式响应，引导用户
         sm.force(DialogState.CHATTING)
         session.touch()
         return await self._chat_reply(session, user_message)
 
     # ================================================================
-    #  检索主流程（4步 Pipeline）
+    #  检索主流程
     # ================================================================
 
     async def _do_search(
@@ -144,15 +147,15 @@ class AgentPipeline:
     ) -> Dict[str, Any]:
         sm = session.state_machine
         reasoning_steps: List[str] = []
+        progress_trail: List[str] = []
 
-        # ★ 领域自动检测（关键词规则，非 LLM）
+        # 领域检测
+        progress_trail.append(PROGRESS_PHRASES["domain_detect"])
         detected_domain = self._detect_domain(user_message)
         if detected_domain != session.domain:
             old = session.domain
             session.domain = detected_domain
-            reasoning_steps.append(
-                f"领域切换：{old} → {detected_domain}（检测到关键词）"
-            )
+            reasoning_steps.append(f"领域切换：{old} → {detected_domain}")
         else:
             reasoning_steps.append(f"当前领域：{detected_domain}")
 
@@ -165,49 +168,48 @@ class AgentPipeline:
         config = DOMAIN_AGENT_CONFIG.get(domain, DOMAIN_AGENT_CONFIG["auto"])
         has_attrs = config.get("has_structured_attrs", False)
 
-        # ---- Step 1: LLM Feature Extraction ----
+        # Step 1
         sm.force(DialogState.EXTRACTING)
         session.touch()
+        progress_trail.append(PROGRESS_PHRASES["extracting"])
 
         if has_attrs:
-            extraction, step1_reasoning = await self._step1_extract(
-                domain, agent, user_message
-            )
+            extraction, step1_reasoning = await self._step1_extract(domain, agent, user_message)
             reasoning_steps.append(step1_reasoning)
         else:
-            extraction = {
-                "condensed_query": user_message[:20],
-                "confidence": 0.8,
-            }
-            reasoning_steps.append(
-                f"auto/shop领域：直接使用查询文本"
-            )
+            extraction = {"condensed_query": user_message[:20], "confidence": 0.8}
+            reasoning_steps.append("auto/shop领域：直接使用查询文本")
 
         session.last_extraction = extraction
 
-        # ---- Step 2: Text Condensation ----
+        # Step 2
+        progress_trail.append(PROGRESS_PHRASES["condensing"])
         condensed_query = agent.condense_text(extraction, query=user_message)
-        reasoning_steps.append(
-            f"文本浓缩：「{condensed_query}」"
-        )
+        reasoning_steps.append(f"文本浓缩：「{condensed_query}」")
 
-        # ---- Step 3: CLIP + FAISS ----
+        # Step 3
         sm.force(DialogState.SEARCHING)
         session.touch()
 
-        results, search_reasoning, is_low_confidence = await self._step3_search(
+        results, search_reasoning, is_low_confidence, strategy = await self._step3_search(
             domain, agent, engine, condensed_query, extraction
         )
         reasoning_steps.append(search_reasoning)
+        progress_trail.append(
+            PROGRESS_PHRASES["searching_subset"] if "子集" in strategy else PROGRESS_PHRASES["searching_full"]
+        )
         session.last_results = results
 
-        # ---- Step 4: Result + Suggestions ----
+        # Step 4
         sm.force(DialogState.PRESENTING)
         session.touch()
+        progress_trail.append(PROGRESS_PHRASES["sorting"])
 
         suggestions = agent.generate_suggestions(results, is_low_confidence)
         suggestions.append("或者直接跟我聊天，描述你想要的图片")
         reply = self._format_reply(domain, results, is_low_confidence, extraction, is_first)
+
+        progress_trail.append(PROGRESS_PHRASES["done"])
 
         return {
             "session_id": session.session_id,
@@ -215,22 +217,96 @@ class AgentPipeline:
             "reply": reply,
             "results": results,
             "reasoning_steps": reasoning_steps,
+            "progress_trail": progress_trail,
             "suggestions": suggestions,
             "is_low_confidence": is_low_confidence,
             "domain": domain,
         }
 
     # ================================================================
-    #  对话分支处理
+    #  教育 / 科普 — 点击结果获取物种知识 + 同物种图片
     # ================================================================
 
-    async def _handle_refining(
-        self, session: Session, user_message: str
+    async def educate(
+        self,
+        session: Session,
+        result_index: int,
     ) -> Dict[str, Any]:
-        """用户说'不对/再找' → 以细化后的描述重新检索"""
-        sm = session.state_machine
+        if not session.last_results or result_index >= len(session.last_results):
+            return {"error": "无效的结果索引", "knowledge_text": "", "similar_images": []}
 
-        # 如果 LLM 可用，让 LLM 理解用户的细化需求
+        result = session.last_results[result_index]
+        domain = session.domain
+        agent = self.domain_agents.get(domain)
+        engine = self.engines.get(domain)
+
+        if agent is None or engine is None:
+            return {"error": f"领域不可用", "knowledge_text": "", "similar_images": []}
+
+        # 提取物种/类别信息
+        meta = result.get("meta", result)
+        attrs = meta.get("attributes", {}) if isinstance(meta, dict) else {}
+        caption = str(result.get("caption", "") or meta.get("caption", ""))
+
+        species_id = attrs.get("species_id", "")
+        class_name = attrs.get("class_name", "")
+        scientific_name = meta.get("scientific_name", attrs.get("scientific_name", ""))
+        chinese_name = meta.get("chinese_name", attrs.get("chinese_name", ""))
+        class_name_cn = attrs.get("class_name_cn", "")
+
+        # 查找同物种/类别图片
+        similar_images: List[Dict[str, Any]] = []
+        if domain == "plant" and species_id:
+            indices = agent.find_candidate_indices([species_id])
+            if indices:
+                dummy_vec = np.zeros((1, 512), dtype="float32")
+                similar_images = engine.search_in_subset(dummy_vec, indices, top_k=12)
+                # 由于dummy_vec全为0，内积都为0，结果顺序即索引顺序，取前12个即可
+                similar_images = similar_images[:12]
+
+        elif domain == "animal" and class_name:
+            indices = agent.find_candidate_indices([class_name])
+            if indices:
+                dummy_vec = np.zeros((1, 512), dtype="float32")
+                similar_images = engine.search_in_subset(dummy_vec, indices, top_k=12)
+                similar_images = similar_images[:12]
+
+        # LLM 科普
+        subject = chinese_name or class_name_cn or scientific_name or class_name or caption[:20]
+        knowledge_text = ""
+        if self.llm:
+            try:
+                from langchain_core.messages import HumanMessage, SystemMessage
+                prompt = EDUCATE_PROMPT.format(
+                    subject=subject,
+                    scientific_name=scientific_name or "未知",
+                    domain=domain,
+                    caption=caption,
+                )
+                msgs = [
+                    SystemMessage(content="你是博学的自然知识科普助手。回复简洁有趣，2-3段即可。"),
+                    HumanMessage(content=prompt),
+                ]
+                resp = await self.llm.ainvoke(msgs)
+                knowledge_text = resp.content.strip()
+            except Exception:
+                knowledge_text = f"关于「{subject}」的详细信息暂时无法获取。"
+
+        return {
+            "knowledge_text": knowledge_text,
+            "subject": subject,
+            "scientific_name": scientific_name,
+            "similar_images": similar_images,
+            "main_image": result.get("image_url", ""),
+            "domain": domain,
+        }
+
+    # ================================================================
+    #  对话分支
+    # ================================================================
+
+    async def _handle_refining(self, session: Session, user_message: str) -> Dict[str, Any]:
+        sm = session.state_machine
         if self.llm:
             try:
                 from langchain_core.messages import HumanMessage, SystemMessage
@@ -252,22 +328,17 @@ class AgentPipeline:
         sm.force(DialogState.EXTRACTING)
         return await self._do_search(session, refined_query, is_first=False)
 
-    async def _handle_expanding(
-        self, session: Session, user_message: str
-    ) -> Dict[str, Any]:
-        """用户说'还有/其他' → 显示更多结果"""
+    async def _handle_expanding(self, session: Session, user_message: str) -> Dict[str, Any]:
         sm = session.state_machine
-
-        # 扩大检索：直接全量搜索，不限制候选
         domain = session.domain
         engine = self.engines.get(domain)
         if engine is None:
-            return self._error_reply(session, f"领域不可用")
+            return self._error_reply(session, "领域不可用")
 
         from core.processor import encode_single_text
         query = user_message[:20]
         text_vec = encode_single_text(self.model_loader.model, query, device=self.device)
-        results = engine.search(text_vec, top_k=10)  # 返回更多
+        results = engine.search(text_vec, top_k=10)
 
         session.last_results = results
         sm.force(DialogState.PRESENTING)
@@ -279,15 +350,13 @@ class AgentPipeline:
             "reply": f"以下是更多相关结果（共 {len(results)} 条）：",
             "results": results,
             "reasoning_steps": ["扩大检索：返回更多候选"],
+            "progress_trail": [PROGRESS_PHRASES["searching_full"], PROGRESS_PHRASES["done"]],
             "suggestions": ["如果还是没有满意的，试试换个关键词描述？"],
             "is_low_confidence": False,
             "domain": domain,
         }
 
-    async def _chat_reply(
-        self, session: Session, user_message: str
-    ) -> Dict[str, Any]:
-        """非搜索的聊天消息 → 自然回复 + 引导搜索"""
+    async def _chat_reply(self, session: Session, user_message: str) -> Dict[str, Any]:
         if self.llm:
             try:
                 from langchain_core.messages import HumanMessage, SystemMessage
@@ -303,9 +372,7 @@ class AgentPipeline:
             chat_reply = self._fallback_chat_reply()
 
         return self._reply(
-            session,
-            chat_reply,
-            state=DialogState.CHATTING,
+            session, chat_reply, state=DialogState.CHATTING,
             suggestions=[
                 "帮我找一种开黄色小花的植物",
                 "找一只黑白条纹的动物",
@@ -325,56 +392,37 @@ class AgentPipeline:
         )
 
     # ================================================================
-    #  领域检测（关键词规则）
+    #  领域检测
     # ================================================================
 
     def _detect_domain(self, query: str) -> str:
-        """根据关键词检测领域，匹配不上则返回 auto"""
         scores: Dict[str, int] = {}
         for domain, keywords in DOMAIN_KEYWORDS.items():
             score = sum(1 for kw in keywords if kw in query)
             if score > 0:
                 scores[domain] = score
-
         if not scores:
             return "auto"
-
-        # 返回匹配关键词最多的领域
-        best = max(scores, key=scores.get)
-        return best
-
-    # ================================================================
-    #  搜索意图检测
-    # ================================================================
+        return max(scores, key=scores.get)
 
     def _is_search_intent(self, query: str) -> bool:
-        # 显式搜索关键词
         if any(kw in query for kw in SEARCH_INTENT_KEYWORDS):
             return True
-        # 包含视觉描述词
         if any(kw in query for kw in VISUAL_DESCRIPTORS):
             return True
-        # 领域关键词命中
         if self._detect_domain(query) != "auto":
             return True
-        # 长度 > 5 字且不包含问号 → 大概率是搜索
-        if len(query) >= 8 and "?" not in query and "?" not in query:
+        if len(query) >= 8 and "?" not in query and "？" not in query:
             return True
         return False
 
     # ================================================================
-    #  Step 1: LLM 特征提取
+    #  Step 1
     # ================================================================
 
-    async def _step1_extract(
-        self,
-        domain: str,
-        agent: DomainAgent,
-        query: str,
-    ) -> tuple:
+    async def _step1_extract(self, domain: str, agent: DomainAgent, query: str) -> tuple:
         knowledge_text = agent.knowledge_text()
         prompts = build_prompt(domain, query, knowledge_text)
-
         try:
             from langchain_core.messages import HumanMessage, SystemMessage
             messages = [
@@ -386,47 +434,29 @@ class AgentPipeline:
             content = self._clean_json(content)
             extraction = json.loads(content)
         except Exception as e:
-            extraction = {
-                "condensed_query": query[:20],
-                "confidence": 0.3,
-                "parse_error": str(e)[:100],
-            }
+            extraction = {"condensed_query": query[:20], "confidence": 0.3, "parse_error": str(e)[:100]}
 
         conf = extraction.get("confidence", 0.5)
         num_candidates = len(
             extraction.get("candidate_species_ids", [])
             or extraction.get("candidate_classes", [])
         )
-        reasoning = (
-            f"LLM特征提取：confidence={conf:.2f}，"
-            f"候选数={num_candidates}，"
-            f"query_type={extraction.get('query_type', 'direct')}"
-        )
+        reasoning = f"LLM特征提取：confidence={conf:.2f}，候选数={num_candidates}，query_type={extraction.get('query_type', 'direct')}"
         return extraction, reasoning
 
     # ================================================================
-    #  Step 3: CLIP + FAISS 检索
+    #  Step 3
     # ================================================================
 
     async def _step3_search(
-        self,
-        domain: str,
-        agent: DomainAgent,
-        engine: SearchEngine,
-        condensed_query: str,
-        extraction: Dict[str, Any],
+        self, domain: str, agent: DomainAgent, engine: SearchEngine,
+        condensed_query: str, extraction: Dict[str, Any],
     ) -> tuple:
         from core.processor import encode_single_text
 
-        text_vec: np.ndarray = encode_single_text(
-            self.model_loader.model,
-            condensed_query,
-            device=self.device,
-        )
-
+        text_vec: np.ndarray = encode_single_text(self.model_loader.model, condensed_query, device=self.device)
         config = DOMAIN_AGENT_CONFIG.get(domain, {})
         has_attrs = config.get("has_structured_attrs", False)
-
         results: List[Dict[str, Any]] = []
         strategy = "全量检索"
 
@@ -436,10 +466,8 @@ class AgentPipeline:
             if candidate_ids and len(candidate_ids) > 0:
                 candidate_indices = agent.find_candidate_indices(candidate_ids)
                 if len(candidate_indices) >= SUBSET_MIN_CANDIDATES:
-                    strategy = f"子集过滤检索（{len(candidate_indices)} 张候选）"
-                    results = engine.search_in_subset(
-                        text_vec, candidate_indices, top_k=TOP_K
-                    )
+                    strategy = "子集过滤检索"
+                    results = engine.search_in_subset(text_vec, candidate_indices, top_k=TOP_K)
 
         if not results:
             strategy = "全量检索"
@@ -451,11 +479,10 @@ class AgentPipeline:
 
         top_score = results[0]["score"] if results else 0.0
         reasoning = (
-            f"CLIP+FAISS检索：策略={strategy}，"
-            f"Top-1相似度={top_score:.3f}，"
+            f"CLIP+FAISS检索：策略={strategy}，Top-1相似度={top_score:.3f}，"
             f"{'低置信度(<0.5)!' if is_low_confidence else '置信度正常'}"
         )
-        return results, reasoning, is_low_confidence
+        return results, reasoning, is_low_confidence, strategy
 
     # ================================================================
     #  Helpers
@@ -467,17 +494,10 @@ class AgentPipeline:
         text = re.sub(r"\n?```\s*$", "", text)
         return text.strip()
 
-    def _format_reply(
-        self,
-        domain: str,
-        results: List[Dict[str, Any]],
-        is_low_confidence: bool,
-        extraction: Dict[str, Any],
-        is_first: bool = False,
-    ) -> str:
-        domain_names = {
-            "plant": "植物", "animal": "动物", "auto": "通用图片", "shop": "电商商品"
-        }
+    def _format_reply(self, domain: str, results: List[Dict[str, Any]],
+                       is_low_confidence: bool, extraction: Dict[str, Any],
+                       is_first: bool = False) -> str:
+        domain_names = {"plant": "植物", "animal": "动物", "auto": "通用图片", "shop": "电商商品"}
         dn = domain_names.get(domain, domain)
 
         switch_hint = ""
@@ -506,7 +526,6 @@ class AgentPipeline:
         reasons = extraction.get("reasoning", "")
         if reasons:
             prefix += f"\n\n推理依据：{reasons}"
-
         if switch_hint:
             prefix += switch_hint
 
@@ -514,30 +533,19 @@ class AgentPipeline:
 
     def _error_reply(self, session: Session, msg: str) -> Dict[str, Any]:
         return {
-            "session_id": session.session_id,
-            "state": session.state,
-            "reply": f"抱歉，{msg}。",
-            "results": [],
-            "reasoning_steps": [msg],
+            "session_id": session.session_id, "state": session.state,
+            "reply": f"抱歉，{msg}。", "results": [],
+            "reasoning_steps": [msg], "progress_trail": [],
             "suggestions": ["试试切换到另一个领域？"],
-            "is_low_confidence": True,
-            "domain": session.domain,
+            "is_low_confidence": True, "domain": session.domain,
         }
 
-    def _reply(
-        self,
-        session: Session,
-        text: str,
-        state: DialogState = DialogState.CHATTING,
-        suggestions: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+    def _reply(self, session: Session, text: str, state: DialogState = DialogState.CHATTING,
+               suggestions: Optional[List[str]] = None) -> Dict[str, Any]:
         return {
-            "session_id": session.session_id,
-            "state": state.value,
-            "reply": text,
-            "results": session.last_results,
-            "reasoning_steps": [],
-            "suggestions": suggestions or [],
-            "is_low_confidence": False,
+            "session_id": session.session_id, "state": state.value,
+            "reply": text, "results": session.last_results,
+            "reasoning_steps": [], "progress_trail": [PROGRESS_PHRASES["chatting"]],
+            "suggestions": suggestions or [], "is_low_confidence": False,
             "domain": session.domain,
         }
