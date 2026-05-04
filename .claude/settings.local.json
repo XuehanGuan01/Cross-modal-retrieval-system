@@ -37,7 +37,11 @@
       "Bash(git push *)",
       "Bash(git fetch *)",
       "Bash(git pull *)",
-      "Bash(npx vue-tsc *)"
+      "Bash(npx vue-tsc *)",
+      "Bash(ls *)",
+      "Bash(find \"C:\\\\\\\\Users\\\\\\\\Lenovo\\\\\\\\Desktop\\\\\\\\Cross-modal retrieval system\" -maxdepth 2 -type f -o -maxdepth 2 -type d)",
+      "Bash(find \"C:\\\\\\\\Users\\\\\\\\Lenovo\\\\\\\\Desktop\\\\\\\\Cross-modal retrieval system\\\\\\\\frontend\\\\\\\\src\" -type f)",
+      "Bash(find \"C:\\\\\\\\Users\\\\\\\\Lenovo\\\\\\\\Desktop\\\\\\\\Cross-modal retrieval system\\\\\\\\backend\" -maxdepth 3 -type f -name \"*.py\")"
     ]
   }
 }
